@@ -1,5 +1,7 @@
 // matth-x/ArduinoOcpp
 // Copyright Matthias Akstaller 2019 - 2022
+// Fbisinger/ocppdummy
+// Copyright F.Bisinger 2023
 // MIT License
 //
 //
