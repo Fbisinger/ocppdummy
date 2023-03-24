@@ -26,31 +26,21 @@
  * Pin mapping part I
  * Interface to the SECC (Supply Equipment Communication Controller, e.g. the SAE J1772 module)
  */
-#define AMPERAGE_PIN 4 //modulated as PWM
+#define AMPERAGE_PIN 27 //modulated as PWM
 
 #define EV_PLUG_PIN 14 // Input pin | Read if an EV is connected to the EVSE
-#if defined(ESP32)
 #define EV_PLUGGED HIGH
 #define EV_UNPLUGGED LOW
-#elif defined(ESP8266)
-#define EV_PLUGGED LOW
-#define EV_UNPLUGGED HIGH
-#endif
 
-#define OCPP_CHARGE_PERMISSION_PIN 5 // Output pin | Signal if OCPP allows / forbids energy flow
+#define OCPP_CHARGE_PERMISSION_PIN 5 // Output pin | Signal if OCPP allows / forbids energy flow (green led)
 #define OCPP_CHARGE_PERMITTED HIGH
 #define OCPP_CHARGE_FORBIDDEN LOW
 
-#define EV_CHARGE_PIN 12 // Input pin | Read if EV requests energy (corresponds to SAE J1772 State C)
-#if defined(ESP32)
+#define EV_CHARGE_PIN 4 // Input pin | Read if EV requests energy (corresponds to SAE J1772 State C)
 #define EV_CHARGING LOW
 #define EV_SUSPENDED HIGH
-#elif defined(ESP8266)
-#define EV_CHARGING HIGH
-#define EV_SUSPENDED LOW
-#endif
 
-#define OCPP_AVAILABILITY_PIN 0 // Output pin | Signal if this EVSE is out of order (set by Central System)
+#define OCPP_AVAILABILITY_PIN 0 // Output pin | Signal if this EVSE is out of order (set by Central System) (red led)
 #define OCPP_AVAILABLE HIGH
 #define OCPP_UNAVAILABLE LOW
 
@@ -63,18 +53,13 @@
  * Internal LED of ESP8266/ESP32 + additional ESP8266 development board LED
  */
 
-#define SERVER_CONNECT_LED 16 // Output pin | Signal if connection to OCPP server has succeeded
-#define SERVER_CONNECT_ON LOW
-#define SERVER_CONNECT_OFF HIGH
+#define SERVER_CONNECT_LED 16 // Output pin | Signal if connection to OCPP server has succeeded (blue led)
+#define SERVER_CONNECT_ON HIGH
+#define SERVER_CONNECT_OFF LOW
 
-#define CHARGE_PERMISSION_LED 2 // Output pin | Signal if OCPP allows / forbids energy flow
-#if defined(ESP32)
+#define CHARGE_PERMISSION_LED 2 // Output pin | Signal if OCPP allows / forbids energy flow (yellow led)
 #define CHARGE_PERMISSION_ON HIGH
 #define CHARGE_PERMISSION_OFF LOW
-#elif defined(ESP8266)
-#define CHARGE_PERMISSION_ON LOW
-#define CHARGE_PERMISSION_OFF HIGH
-#endif
 
 #if !defined(SECC_NO_DEBUG)
 #define PRINT(...) Serial.print(__VA_ARGS__)
@@ -132,18 +117,10 @@ void setup() {
     digitalWrite(CHARGE_PERMISSION_LED, CHARGE_PERMISSION_OFF);
 
     pinMode(AMPERAGE_PIN, OUTPUT);
-#if defined(ESP32)
-    pinMode(AMPERAGE_PIN, OUTPUT);
     ledcSetup(0, 1000, 8); //channel=0, freq=1000Hz, range=(2^8)-1
     ledcAttachPin(AMPERAGE_PIN, 0);
     ledcWrite(AMPERAGE_PIN, 256); //256 is constant +3.3V DC
-#elif defined(ESP8266)
-    analogWriteRange(255); //range=(2^8)-1
-    analogWriteFreq(1000); //freq=1000Hz
-    analogWrite(AMPERAGE_PIN, 256); //256 is constant +3.3V DC
-#else
-#error Can only run on ESP8266 and ESP32 on the Arduino platform!
-#endif
+
 
     pinMode(SERVER_CONNECT_LED, OUTPUT);
     digitalWrite(SERVER_CONNECT_LED, SERVER_CONNECT_ON); //signal device reboot
@@ -257,12 +234,7 @@ void setup() {
         } else {
             pwmVal = (int) (4.26667f * amps);
         }
-
-#if defined(ESP32)
         ledcWrite(AMPERAGE_PIN, pwmVal);
-#elif defined(ESP8266)
-        analogWrite(AMPERAGE_PIN, pwmVal);
-#endif
     });
 
     setEvReadyInput([]() {
@@ -293,7 +265,7 @@ void setup() {
     /*
      * Notify the Central System that this station is ready
      */
-    bootNotification("My Charging Station", "My company name", [] (JsonObject response) {
+    bootNotification("ESP32 DUMMY OCPP Client", "F.Bisinger", [] (JsonObject response) {
         if (response["status"].as<String>().equals("Accepted")) {
             booted = true;
             digitalWrite(SERVER_CONNECT_LED, SERVER_CONNECT_ON);
