@@ -26,7 +26,8 @@
  * Pin mapping part I
  * Interface to the SECC (Supply Equipment Communication Controller, e.g. the SAE J1772 module)
  */
-#define AMPERAGE_PIN 27 //modulated as PWM
+#define AMPERAGE_PIN 25 //modulated as PWM
+#define PWM_CHANNEL 0 //ESP PWM channel
 
 #define EV_PLUG_PIN 14 // Input pin | Read if an EV is connected to the EVSE
 #define EV_PLUGGED HIGH
@@ -117,9 +118,9 @@ void setup() {
     digitalWrite(CHARGE_PERMISSION_LED, CHARGE_PERMISSION_OFF);
 
     pinMode(AMPERAGE_PIN, OUTPUT);
-    ledcSetup(0, 1000, 8); //channel=0, freq=1000Hz, range=(2^8)-1
-    ledcAttachPin(AMPERAGE_PIN, 0);
-    ledcWrite(AMPERAGE_PIN, 256); //256 is constant +3.3V DC
+    ledcSetup(PWM_CHANNEL, 1000, 8); //channel=0, freq=1000Hz, range=(2^8)-1
+    ledcAttachPin(AMPERAGE_PIN, PWM_CHANNEL);
+    ledcWrite(PWM_CHANNEL, 256); //256 is constant +3.3V DC
 
 
     pinMode(SERVER_CONNECT_LED, OUTPUT);
@@ -221,12 +222,12 @@ void setup() {
     setSmartChargingOutput([](float limit) {
         //set the SAE J1772 Control Pilot value here
         const float voltage = 230.f; // European grid
-        const uint nPhases = 1; //one, two or three phase charging
+        const uint nPhases = 3; //one, two or three phase charging
         float amps = limit / (voltage * (float) nPhases);
         if (amps > 51.f)
             amps = 51.f;
 
-        PRINTF("[main] Smart Charging allows maximum charge rate: %iW; convert to Control Pilot amerage: %.2fA\n", (int) limit, amps);
+        PRINTF("[main] Smart Charging allows maximum charge rate: %iW; convert to Control Pilot amperage: %.2fA\n", (int) limit, amps);
 
         int pwmVal;
         if (amps < 6.f) {
@@ -234,7 +235,7 @@ void setup() {
         } else {
             pwmVal = (int) (4.26667f * amps);
         }
-        ledcWrite(AMPERAGE_PIN, pwmVal);
+        ledcWrite(PWM_CHANNEL, pwmVal);
     });
 
     setEvReadyInput([]() {
