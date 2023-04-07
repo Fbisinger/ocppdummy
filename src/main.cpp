@@ -22,6 +22,19 @@
 #include <ArduinoOcpp.h>
 #include <ArduinoOcpp/Core/Configuration.h> //load and save settings of WiFi captive portal
 
+#include <SPI.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+#define UPDATE_RATE 10
+#define SCREEN_WIDTH 128 // OLED display width, in pixels
+#define SCREEN_HEIGHT 64 // OLED display height, in pixels
+#define OLED_RESET     -1 // Reset pin # (or -1 if sharing Arduino reset pin)
+#define SCREEN_ADDRESS 0x3C ///< See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
+
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
 /*
  * Pin mapping part I
  * Interface to the SECC (Supply Equipment Communication Controller, e.g. the SAE J1772 module)
@@ -42,8 +55,8 @@
 #define EV_SUSPENDED HIGH
 
 #define OCPP_AVAILABILITY_PIN 0 // Output pin | Signal if this EVSE is out of order (set by Central System) (red led)
-#define OCPP_AVAILABLE HIGH
-#define OCPP_UNAVAILABLE LOW
+#define OCPP_AVAILABLE LOW
+#define OCPP_UNAVAILABLE HIGH
 
 #define EVSE_GROUND_FAULT_PIN 13 // Input pin | Read ground fault detector
 #define EVSE_GROUND_FAULTED HIGH
@@ -76,6 +89,8 @@ WebSocketsClient wSock;
 ArduinoOcpp::EspWiFi::OcppClientSocket oSock{&wSock};
 
 int evPlugged = EV_UNPLUGGED;
+int updateCounter = 0; //Update counter for diplay update
+int chargingRate = 0; //Global variable for current charging rate
 
 bool booted = false;
 ulong scheduleReboot = 0; //0 = no reboot scheduled; otherwise reboot scheduled in X ms
@@ -127,6 +142,21 @@ void setup() {
     digitalWrite(SERVER_CONNECT_LED, SERVER_CONNECT_ON); //signal device reboot
     delay(100);
     digitalWrite(SERVER_CONNECT_LED, SERVER_CONNECT_OFF);
+
+    // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
+    if(!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
+        Serial.println(F("SSD1306 allocation failed"));
+    }
+
+    display.clearDisplay();
+    display.setTextSize(1);      // Normal 1:1 pixel scale
+    display.setTextColor(SSD1306_WHITE); // Draw white text
+    display.setCursor(0, 0);
+    display.cp437(true);         // Use full 256 char 'Code Page 437' font
+    display.print("    SAE J1772 EVSE\n      OCPP DUMMY\n(c)F.Bisinger 04/2023");
+    display.setCursor(0, 32);
+    display.print("Configuration Portal (Available fo 60s)\n  SSID: EVSE-Config\n  PW: evse1234");
+    display.display();
 
     /*
      * You can use ArduinoOcpp's internal configurations store for credentials other than those which are
@@ -228,6 +258,7 @@ void setup() {
             amps = 51.f;
 
         PRINTF("[main] Smart Charging allows maximum charge rate: %iW; convert to Control Pilot amperage: %.2fA\n", (int) limit, amps);
+        chargingRate = limit;
 
         int pwmVal;
         if (amps < 6.f) {
@@ -245,9 +276,9 @@ void setup() {
 
     addErrorCodeInput([] () {
         //Uncomment if Ground fault pin is used
-        //if (digitalRead(EVSE_GROUND_FAULT_PIN) != EVSE_GROUND_CLEAR) {
-        //    return "GroundFault";
-        //}
+        if (digitalRead(EVSE_GROUND_FAULT_PIN) != EVSE_GROUND_CLEAR) {
+            return "GroundFault";
+        }
         return (const char *) nullptr;
     });
 
@@ -279,7 +310,7 @@ void setup() {
 }
 
 void loop() {
-
+    
     /*
      * Do all OCPP stuff (process WebSocket input, send recorded meter values to Central System, etc.)
      */
@@ -310,6 +341,8 @@ void loop() {
     }
 
     auto readEvPlugged = digitalRead(EV_PLUG_PIN);
+    auto readEvEnergyRequest = digitalRead(EV_CHARGE_PIN);
+    
     if (evPlugged == EV_UNPLUGGED && readEvPlugged == EV_PLUGGED //transition from unplugged to plugged
                 && getTransactionId() < 0  //no transaction yet
                 && isOperative()) {        //EVSE is in operative mode
@@ -320,7 +353,46 @@ void loop() {
     }
     evPlugged = readEvPlugged;
 
-    //... see ArduinoOcpp.h for more possibilities
+    
+    
+    updateCounter++;
+    if(updateCounter>UPDATE_RATE){
+        updateCounter = 0;
+        display.clearDisplay();
+        display.setCursor(0, 0);
+        display.print("    SAE J1772 EVSE\n      OCPP DUMMY\n(c)F.Bisinger 04/2023");
+
+        display.setCursor(0, 57);
+        display.print("MAX POWER: " + String(chargingRate) + "W");
+
+        if (readEvPlugged == EV_UNPLUGGED){
+        display.setCursor(0, 37);
+        display.print("EV: UNPLUGGED");
+        }
+        if (readEvPlugged == EV_PLUGGED){
+            display.setCursor(0, 37);
+            display.print("EV: PLUGGED");
+        }
+        if(readEvEnergyRequest == EV_CHARGING){
+            display.setCursor(0, 47);
+            display.print("EV: POWER REQUEST");
+        }
+        if(readEvEnergyRequest == EV_SUSPENDED){
+            display.setCursor(0, 47);
+            display.print("EV: NO POWER REQUEST");
+        }
+        if (isOperative()){
+        digitalWrite(OCPP_AVAILABILITY_PIN, OCPP_AVAILABLE);
+        display.setCursor(0, 27);
+        display.print("EVSE: OPERATIVE");
+        }
+        else{
+            digitalWrite(OCPP_AVAILABILITY_PIN, OCPP_UNAVAILABLE);
+            display.setCursor(0, 27);
+            display.print("EVSE: UNOPERATIVE");
+        }
+        display.display();
+    }
 }
 
 
